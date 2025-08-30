@@ -338,13 +338,44 @@ if __name__ == '__main__':
             print("Country: {} ({})".format(k,v))
         sys.exit(0)
 
+    # build reverse lookup: country_name -> iso_numeric
+    iso_by_country = {country_name: iso for iso, country_name in country_dict.items()}
+
+    # If user requested a country filter, produce ONLY the filtered output (no full world files)
+    if args.countries:
+        countries = list(map(str.lower, args.countries.split(',')))
+        interesting_countries = {k: v for k, v in country_alpha_dict.items() if k in countries or v in countries}
+        if not interesting_countries:
+            print('Skipping interesting countries output, no matching countries found')
+            sys.exit(0)
+
+        print('Found countries: ', interesting_countries)
+        print('Writing interesting country definitions and maps (filtered output only)...')
+
+        # write a small definitions file with only the interesting countries
+        with open(args.dir + 'geoip-def-interesting.nft', 'w') as f:
+            for country, alpha2 in interesting_countries.items():
+                iso = iso_by_country.get(country)
+                if not iso:
+                    print(f'Warning: iso for country {country} not found; skipping')
+                    continue
+                f.write('define {} = {}\n'.format(alpha2.upper(), iso))
+
+        # write filtered maps (ipv4/ipv6) - this uses make_geoip_dict with the filtered alpha set
+        interesting_ipv4, interesting_ipv6 = make_geoip_dict(interesting_countries)
+        write_geoip_maps(interesting_ipv4, interesting_ipv6, True)
+
+        print('Done!')
+        sys.exit(0)
+
+    # No country filter -> original behaviour (full outputs)
     print('Writing country definition files...')
     write_geoip_location(country_dict, continent_dict, country_alpha_dict)
     print('Writing nftables maps (geoip-ipv{4,6}.nft)...')
     geoip4_dict, geoip6_dict = make_geoip_dict(country_alpha_dict)
     write_geoip_maps(geoip4_dict, geoip6_dict)
 
-    # Write separate map of countries if list provided
+    # If we get here and a country filter was provided, also optionally generate filtered maps
     if (args.countries):
         countries = list(map(str.lower,args.countries.split(',')))
         interesting_countries = {k: v for k, v in country_alpha_dict.items() if k in countries or v in countries}
